@@ -1,0 +1,225 @@
+---
+title: "Stats-2023"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-01-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(knitr.table.format = "html") 
+library(dplyr)
+library(kableExtra)
+
+
+
+
+overall_group = function(data, col_name)
+{
+  
+  d1 = data %>%
+    mutate(summary_level = "grouped")
+  
+  d2 = data %>%
+    mutate(summary_level = "ungrouped") %>%
+    mutate(!!sym(col_name) := NA)
+  
+  d12 = rbind(d1, d2) %>%
+    group_by(summary_level, !!sym(col_name))
+  
+  return(d12)
+}
+
+done2023 <- rxDoneData %>% 
+  filter((ID != "000-1" & ID != "00000-1")) %>%
+  filter(RxDate >= as.Date(audit_start_date) & RxDate < as.Date(audit_end_date)) 
+```
+
+
+These are some variables you might wish to choose, I had to do an ugly global variable hack to get them visible from this file, but you dont need to worry about that! Thanks Paul
+
+Audit Period from:
+`r audit_start_date`
+`r audit_end_date`
+
+For organs:
+`r paste(audit_organs)`
+
+Generate on date:
+```{r}
+renderText({
+  format(Sys.time(), "%a %b %d %X %Y")
+})
+```
+
+Lovely stuff
+
+
+```{r ref_dtt}
+done2023 %>%
+  mutate(within10=ifelse(Ref_DTT<=10, 1,0),
+         within21=ifelse(Ref_DTT<=21, 1, 0)) %>%
+  overall_group("Organs") %>%
+  summarise(mean=round(mean(Ref_DTT, na.rm=T), 1),
+            median=round(median(Ref_DTT, na.rm=T), 1),
+            w10=(sum(within10, na.rm=T)),
+            w21=(sum(within21, na.rm=T)), 
+            'w10%'=round(sum(within10, na.rm=T)/n()*100, 1),
+            'w21%'=round(sum(within21, na.rm=T)/n()*100, 1), 
+            n=n()) %>%
+  kbl %>%
+  kable_styling()
+
+```
+
+```{r dtt_rx}
+done2023 %>%
+  mutate(within31=ifelse(DTT_Rx<=31, 1,0), within45=ifelse(DTT_Rx<=45, 1,0), within60=ifelse(DTT_Rx<=60, 1, 0)) %>%
+  overall_group("Organs") %>%
+  summarise(mean=round(mean(DTT_Rx, na.rm=T), 1),
+            median=round(median(DTT_Rx, na.rm=T), 1),
+            w45=(sum(within45, na.rm=T)),
+            w60=(sum(within60, na.rm=T)), 
+            'w31%'=round(sum(within31, na.rm=T)/n()*100, 1),
+            'w45%'=round(sum(within45, na.rm=T)/n()*100, 1),
+            'w60%'=round(sum(within60, na.rm=T)/n()*100, 1), 
+            n=n()) %>%
+  select(Organs, mean, median, 'w31%', 'w45%', 'w60%', n) %>%
+  kbl %>%
+  kable_styling()
+```
+
+```{r ref_rx}
+done2023 %>%
+  mutate(within90=ifelse(Ref_RxDone<=90, 1,0)) %>%
+  overall_group("Organs") %>%
+  summarise(mean=round(mean(Ref_RxDone, na.rm=T), 1),
+            median=round(median(Ref_RxDone, na.rm=T), 1),
+            'w90'=round(sum(within90, na.rm=T), 1), 
+            'w90%'=round(sum(within90, na.rm=T)/n()*100, 1),
+            n=n(),
+            ) %>%
+  mutate(Organs=if_else(is.na(Organs), 'All Organs', Organs),
+    'Tumour Type'=paste(Organs, ' (N=', n,')', sep='')) %>%
+  ungroup()%>%
+  filter(Organs != 'Multiple Organs') %>%
+  select('Tumour Type', mean, median, 'w90%') %>%
+  kbl %>%
+  kable_styling()
+```
+
+
+```{r daystopped_nopre}
+done2023 %>% 
+  mutate(
+    clockstopped=if_else(
+      is.na(ClockStopDaysPreDTT), 
+      if_else(is.na(ClockStopDaysPostDTT), 'Not Stopped', 'Stopped'),
+      if_else(is.na(ClockStopDaysPostDTT), 'Stopped', 'Stopped')),
+    daysStopped=if_else(
+      is.na(ClockStopDaysPreDTT),
+      if_else(is.na(ClockStopDaysPostDTT), 0, ClockStopDaysPostDTT),
+      if_else(is.na(ClockStopDaysPostDTT), ClockStopDaysPreDTT, ClockStopDaysPreDTT+ClockStopDaysPostDTT),
+    ),
+  ) %>% 
+  group_by(clockstopped) %>% 
+  summarise(n=n(), mean=round(mean(daysStopped), 1), median=round(median(daysStopped), 1))%>%
+  kbl %>%
+  kable_styling()
+```
+
+
+```{r daystopped}
+done2023 %>% 
+  mutate(
+    clockstopped=if_else(
+      is.na(ClockStopDaysPreDTT), 
+      if_else(is.na(ClockStopDaysPostDTT), 'Not Stopped', 'Stopped Pre'),
+      if_else(is.na(ClockStopDaysPostDTT), 'Stopped Post', 'Stopped Both')),
+    daysStopped=if_else(
+      is.na(ClockStopDaysPreDTT),
+      if_else(is.na(ClockStopDaysPostDTT), 0, ClockStopDaysPostDTT),
+      if_else(is.na(ClockStopDaysPostDTT), ClockStopDaysPreDTT, ClockStopDaysPreDTT+ClockStopDaysPostDTT),
+    ),
+  ) %>% 
+  group_by(clockstopped) %>% 
+  summarise(n=n(), mean=round(mean(daysStopped), 1), median=round(median(daysStopped), 1))%>%
+  kbl %>%
+  kable_styling()
+```
+
+
+```{r clockstop}
+  done2023 %>% mutate(
+    clockstopped=if_else(
+      is.na(ClockStopDaysPreDTT), 
+      if_else(is.na(ClockStopDaysPostDTT), 'Not Stopped', 'Stopped Post'),
+      if_else(is.na(ClockStopDaysPostDTT), 'Stopped Pre', 'Stopped Both')),
+    daysStopped=if_else(
+      is.na(ClockStopDaysPreDTT),
+      if_else(is.na(ClockStopDaysPostDTT), 0, ClockStopDaysPostDTT),
+      if_else(is.na(ClockStopDaysPostDTT), ClockStopDaysPreDTT, ClockStopDaysPreDTT+ClockStopDaysPostDTT),
+    ),
+  ) %>% filter(clockstopped != 'Not Stopped') %>% select(ID, ClockStopWhy) %>%
+  kbl %>%
+  kable_styling()
+```
+
+
+## Including Plots
+
+
+```{r ttt_plot, echo=FALSE}
+done2023plot <- ggplot(done2023, aes(x=RxDate, text=paste(ID, Organs, ClockStopWhy))) +
+    geom_point( aes(y=Ref_DTT,              color="Ref to DTT")) + 
+    geom_point( aes(y=DTT_Rx,               color="DTT to Rx")) + 
+    geom_point( aes(y=Ref_RxDone,           color="Ref to Rx")) +
+    geom_point( aes(y=ClockStopDaysPreDTT,  color="Clock Stops Pre-DTT")) +
+    geom_point( aes(y=ClockStopDaysPostDTT, color="Clock Stops Post-DTT")) +
+    theme(legend.position="bottom") +
+    scale_color_manual(values = rxdonePlotColors) +
+    guides(color=guide_legend("Treated Patients...")) +
+    labs(y="Number of Days", x="Treatment Date") +
+    ggtitle("Time to Treatment") 
+  
+  break.vec <- seq(from = as.Date("2023-01-01"), to = as.Date("2024-01-01"),
+                     by = "month")
+  labels.vec <- strftime(break.vec, "%b")
+  labels.vec[1] <- "Jan '23"
+  labels.vec[13] <- "Jan '24"
+    
+ done2023plot + 
+    scale_x_date(limits = as.Date(c('2022-12-31', '2023-12-31'), format = "%d/%m/%Y", origin='1970-01-01'), breaks=break.vec,  labels=labels.vec, expand=c(0.1,0)) +
+    theme(legend.position="bottom")
+ 
+```
+
+```{r organ_pie}
+done2023 %>% 
+  group_by(Organs) %>%
+  summarise(n=n()) %>% 
+  mutate(prop=n/sum(.$n) *100,
+         ypos= cumsum(prop)- 0.5*prop,
+         Organs=paste(Organs, ' (N=',n,')', sep='')) %>%
+  ggplot(aes(x="", y=n, fill=Organs)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) + 
+  theme_void() +
+  scale_fill_brewer(palette="Set1", name="Tumour Type")
+
+```
+
+## Long waits
+
+
+```{r longwaits}
+done2023 %>% 
+  filter(Ref_RxDone > 120) %>%
+  select(ID, Ref_RxDone, ClockStopDaysPreDTT, ClockStopDaysPostDTT) %>%
+  kbl %>%
+  kable_styling()
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
